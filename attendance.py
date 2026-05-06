@@ -16,11 +16,11 @@ if not os.path.exists(excel_file):
     ws = wb.active
     ws.title = "Attendance"
 
-    ws.append(["Name", "Date", "Time"] + [f"Week{i}" for i in range(1, 11)])
+    ws.append(["ID", "Name", "Date", "Time", "Status"])
     wb.save(excel_file)
 
 
-def mark_attendance(name):
+def mark_attendance(student_id, name):
     wb = load_workbook(excel_file)
     ws = wb.active
 
@@ -30,27 +30,20 @@ def mark_attendance(name):
 
     # ---------------- FIND USER ----------------
     for row in ws.iter_rows(min_row=2):
-        if row[0].value == name:
+        if row[0].value == student_id:
 
-            # update date/time
-            row[1].value = date_now
-            row[2].value = time_now
-
-            # fill next empty week with 1
-            for i in range(3, 13):  # Week1 -> Week10 (columns 4-13)
-                if row[i].value is None or row[i].value == "":
-                    row[i].value = 1
-                    break
+            # update existing record
+            row[1].value = name
+            row[2].value = date_now
+            row[3].value = time_now
+            row[4].value = "Present"
 
             wb.save(excel_file)
-            print(f"{name} marked present (week updated)")
+            print(f"{name} marked present")
             return
 
     # ---------------- NEW PERSON ----------------
-    new_row = [name, date_now, time_now] + [0]*10
-    new_row[3] = 1  # first week = 1
-
-    ws.append(new_row)
+    ws.append([student_id, name, date_now, time_now, "Present"])
     wb.save(excel_file)
 
     print(f"{name} added and marked present")
