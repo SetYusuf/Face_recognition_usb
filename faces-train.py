@@ -15,122 +15,105 @@ LABELS_PATH  = os.path.join(BASE_DIR, "labels.pickle")
 # ---------- LOAD CASCADE ----------
 face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
 if face_cascade.empty():
-    print(f"ERROR: Could not load cascade from {CASCADE_PATH}")
+    print("ERROR: Cascade not loaded")
     exit()
 
-# ---------- LBPH RECOGNIZER ----------
-recognizer = cv2.face.LBPHFaceRecognizer_create(
-    radius=2,
-    neighbors=8,
-    grid_x=8,
-    grid_y=8
-)
+# ---------- RECOGNIZER ----------
+recognizer = cv2.face.LBPHFaceRecognizer_create()
 
-current_id = 0
-label_ids  = {}
-x_train    = []
-y_labels   = []
+# Store mapping: student_id (int) -> name (str)
+student_labels = {}
 
-# ---------- PROCESS DATASET ----------
+x_train = []
+y_labels = []
+
+# ---------- SCAN ALL IMAGES ----------
 for root, dirs, files in os.walk(IMAGE_DIR):
-
-    # Skip images sitting directly in images/ (no person subfolder)
-    if os.path.abspath(root) == os.path.abspath(IMAGE_DIR):
+    # Skip top-level directory
+    if root == IMAGE_DIR:
         continue
 
     for file in files:
         if not file.lower().endswith(("png", "jpg", "jpeg")):
             continue
 
-        path  = os.path.join(root, file)
-        label = os.path.basename(root).replace(" ", "-").lower()
+        path = os.path.join(root, file)
 
-        if label not in label_ids:
-            label_ids[label] = current_id
-            current_id += 1
+        # Parse folder name: "ID_name" format (e.g., "1_john doe")
+        folder_name = os.path.basename(root)
+        
+        # Split on first underscore to get ID and name
+        parts = folder_name.split("_", 1)
+        if len(parts) == 2:
+            student_id_str, student_name = parts
+            try:
+                student_id = int(student_id_str)
+            except ValueError:
+                print(f"WARNING: Invalid ID in folder '{folder_name}', skipping")
+                continue
+        else:
+            # Fallback: use folder name as-is (no ID prefix)
+            print(f"WARNING: Folder '{folder_name}' doesn't follow ID_name format, using folder name")
+            student_id = hash(folder_name) % 10000  # Generate a numeric ID
+            student_name = folder_name
 
-        id_ = label_ids[label]
+        # Store the student ID -> name mapping
+        if student_id not in student_labels:
+            student_labels[student_id] = student_name
 
-        # ---------- LOAD IMAGE AS GRAYSCALE ----------
-        pil_image   = Image.open(path).convert("L")
-        image_array = np.array(pil_image, "uint8")
+        id_ = student_id
 
-        # ---------- FACE DETECTION ----------
-        faces = face_cascade.detectMultiScale(
-            image_array,
-            scaleFactor=1.2,
-            minNeighbors=5,
-            minSize=(60, 60)
-        )
+        # ---------- LOAD IMAGE ----------
+        try:
+            pil_img = Image.open(path).convert("L")
+            img = np.array(pil_img, "uint8")
+        except:
+            print("Skipping corrupted:", path)
+            continue
+
+        # ---------- DETECT FACE ----------
+        faces = face_cascade.detectMultiScale(img, 1.2, 5)
 
         if len(faces) == 0:
-            print(f"  WARNING: No face found in {path} — skipping")
+            print("No face:", path)
             continue
 
         for (x, y, w, h) in faces:
-            roi = image_array[y:y+h, x:x+w]
+            roi = img[y:y+h, x:x+w]
 
             if roi.size == 0:
                 continue
 
-            # Resize THEN normalize
             roi = cv2.resize(roi, (200, 200))
-            roi = cv2.equalizeHist(roi)
 
-            # ---------- AUGMENTATION ----------
-            # Original
+            # ---------- ADD DATA ----------
             x_train.append(roi)
             y_labels.append(id_)
 
-            # Horizontal flip
+            # simple augmentation (safe)
             x_train.append(cv2.flip(roi, 1))
             y_labels.append(id_)
 
-            # Slight brightness boost
-            bright = cv2.convertScaleAbs(roi, alpha=1.1, beta=15)
-            x_train.append(bright)
-            y_labels.append(id_)
+            print(f"Loaded: {folder_name} -> {file}")
 
-            # Slight brightness reduction
-            dark = cv2.convertScaleAbs(roi, alpha=0.9, beta=-15)
-            x_train.append(dark)
-            y_labels.append(id_)
-
-            # Flipped + bright
-            x_train.append(cv2.flip(bright, 1))
-            y_labels.append(id_)
-
-            # Flipped + dark
-            x_train.append(cv2.flip(dark, 1))
-            y_labels.append(id_)
-
-            print(f"  + {label} [{id_}]  ->  {file}  (6 samples added)")
-
-# ---------- GUARD ----------
+# ---------- CHECK ----------
 if len(x_train) == 0:
-    print("\nERROR: No faces found. Check your dataset folder structure:")
-    print("  images/")
-    print("    PersonName/")
-    print("      photo1.jpg")
-    print("      photo2.jpg  ...")
+    print("ERROR: No training data found!")
     exit()
 
 # ---------- SAVE LABELS ----------
-with open(LABELS_PATH, 'wb') as f:
-    pickle.dump(label_ids, f)
+# Save student_id -> name mapping (e.g., {1: "john doe", 2: "jane smith"})
+with open(LABELS_PATH, "wb") as f:
+    pickle.dump(student_labels, f)
 
-print(f"\nLabels saved  ->  {LABELS_PATH}")
+print("Labels saved:", student_labels)
 
 # ---------- TRAIN ----------
 recognizer.train(x_train, np.array(y_labels))
 recognizer.save(TRAINER_PATH)
 
-print(f"Model saved   ->  {TRAINER_PATH}")
-print(f"\n{'='*40}")
-print(f"  Training complete!")
-print(f"  Total samples : {len(x_train)}")
-print(f"  Total people  : {len(label_ids)}")
-print(f"  Per person    : {len(x_train) // max(len(label_ids),1)} avg")
-print(f"{'='*40}")
-print("\nTIP: For best accuracy, add 15-30 REAL photos per person")
-print("     (different angles, lighting, expressions)")
+print("\n==========================")
+print("TRAINING COMPLETE")
+print("Samples:", len(x_train))
+print("People :", len(student_labels))
+print("==========================")
