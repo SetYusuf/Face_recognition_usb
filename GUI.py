@@ -422,7 +422,8 @@ class App(tk.Tk):
         steps = [("01", "Register Student"),
                  ("02", "Train Model"),
                  ("03", "Start Detection"),
-                 ("04", "View Records")]
+                 ("04", "View Records"),
+                 ("05", "AI Assistant")]
         for i, (num, label) in enumerate(steps):
             s = tk.Frame(wf_bar, bg=NAVY_DIM)
             s.pack(side="left")
@@ -460,6 +461,9 @@ class App(tk.Tk):
             ("04", "View Attendance",
              "Browse records and open the Excel attendance file",
              GREEN, "#e6f5ed", self._attendance),
+            ("05", "AI Assistant",
+             "Open AI Vision Assistant — blink detection, object ID, recipe suggestions",
+             SKY,  "#e3f0fc", self._ai_assistant),
         ]
 
         for step, title, desc, color, row_bg, cmd in row_data:
@@ -608,6 +612,12 @@ class App(tk.Tk):
         _log(self.log, "\n" + "─" * 44 + "\n")
         _log(self.log, "Opening attendance records…\n")
         AttendanceWindow(self)
+
+    def _ai_assistant(self):
+        _log(self.log, "\n" + "─" * 44 + "\n")
+        _log(self.log, "Launching AI Vision Assistant…\n")
+        script = os.path.join(BASE_DIR, "ai_vision_assistant.py")
+        subprocess.Popen([sys.executable, script], cwd=BASE_DIR)
 
     def _clear_log(self):
         self.log.config(state="normal")

@@ -2,3 +2,6 @@ jupyter
 numpy
 opencv-python
 pillow
+mediapipe
+requests
+pyttsx3
